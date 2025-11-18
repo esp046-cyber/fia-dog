@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Dog</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+        
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.6;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        #info h3 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+        
+        .control-btn {
+            margin: 5px 5px 0 0;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 5px;
+            border: none;
+            background: #2196F3;
+            color: white;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        
+        .control-btn:hover {
+            background: #1976D2;
+            transform: scale(1.05);
+        }
+        
+        .control-btn.active {
+            background: #4CAF50;
+        }
+        
+        #autoRotateBtn {
+            background: #4CAF50;
+        }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            text-align: center;
+        }
+
+        /* Animated clouds */
+        .cloud {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 100px;
+            animation: float 20s infinite linear;
+        }
+
+        @keyframes float {
+            0% { transform: translateX(-100px); }
+            100% { transform: translateX(calc(100vw + 100px)); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Animated cloud background elements -->
+    <div class="cloud" style="width: 120px; height: 40px; top: 15%; left: -100px; animation-delay: 0s;"></div>
+    <div class="cloud" style="width: 100px; height: 35px; top: 25%; left: -100px; animation-delay: 7s;"></div>
+    <div class="cloud" style="width: 140px; height: 45px; top: 40%; left: -100px; animation-delay: 14s;"></div>
+    <div class="cloud" style="width: 110px; height: 38px; top: 60%; left: -100px; animation-delay: 4s;"></div>
+    <div class="cloud" style="width: 130px; height: 42px; top: 75%; left: -100px; animation-delay: 11s;"></div>
+    
+    <div id="info">
+        <h3>🐕 Fia's Interactive 3D Dog</h3>
+        <strong>Controls:</strong><br>
+        Left Mouse: Rotate<br>
+        Right Mouse: Pan<br>
+        Scroll: Zoom<br>
+        <div style="margin-top: 10px;">
+            <strong>Dog Actions:</strong><br>
+            <button id="idleBtn" class="control-btn active">Idle</button>
+            <button id="sitBtn" class="control-btn">Sit</button>
+            <button id="walkBtn" class="control-btn">Walk</button>
+            <button id="runBtn" class="control-btn">Run</button>
+            <button id="jumpBtn" class="control-btn">Jump</button>
+            <button id="playBtn" class="control-btn">Play Dead</button>
+        </div>
+        <button id="autoRotateBtn" class="control-btn" style="margin-top: 10px;">Auto-Rotate: ON</button>
+    </div>
+    
+    <div id="loading">Loading 3D Dog...</div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // ============================================
+        // SCENE INITIALIZATION
+        // ============================================
+        
+        let scene, camera, renderer, dog, clock;
+        let particles = [];
+        let butterflies = [];
+        let flowers = [];
+        let trees = [];
+        let autoRotate = true;
+        let dogAction = 'idle';
+        let actionProgress = 0;
+        let dogPosition = new THREE.Vector3(0, 0, 0);
+        let dogRotationY = 0;
+        
+        // OrbitControls variables
+        let isDragging = false;
+        let isPanning = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let cameraRotation = { x: 0, y: 0 };
+        let cameraDistance = 8;
+        let cameraTarget = new THREE.Vector3(0, 1.5, 0);
+        let panOffset = new THREE.Vector3(0, 0, 0);
+        
+        // Configuration
+        const config = {
+            dogColor: 0xD2691E,
+            spotColor: 0x8B4513,
+            noseColor: 0x000000,
+            eyeColor: 0x000000,
+            tongueColor: 0xFF69B4
+        };
+        
+        init();
+        animate();
+        
+        // ============================================
+        // INITIALIZATION FUNCTION
+        // ============================================
+        
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            
+            // Dynamic gradient background
+            const skyColor1 = new THREE.Color(0x87CEEB);
+            const skyColor2 = new THREE.Color(0xE0F6FF);
+            scene.background = skyColor1;
+            scene.fog = new THREE.Fog(0x87CEEB, 15, 45);
+            
+            // Camera setup with dynamic positioning
+            camera = new THREE.PerspectiveCamera(
+                60,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            camera.position.set(0, 3, 8);
+            camera.lookAt(0, 1.5, 0);
+            
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+            
+            // Clock for animations
+            clock = new THREE.Clock();
+            
+            // Lighting setup
+            setupLighting();
+            
+            // Create the dog
+            dog = createDog();
+            dog.userData.initialPositions = {}; // Store initial positions for animations
+            scene.add(dog);
+            
+            // Store initial leg positions
+            dog.traverse(child => {
+                if (child.isMesh) {
+                    child.userData.initialPosition = child.position.clone();
+                    child.userData.initialRotation = child.rotation.clone();
+                }
+            });
+            
+            // Create enhanced environment
+            createGround();
+            createFlowers();
+            createTrees();
+            createButterflies();
+            createParticles();
+            createClouds();
+            createSun();
+            createBirds();
+            
+            
+            // Event listeners
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // Hide loading
+            document.getElementById('loading').style.display = 'none';
+        }
+        
+        // ============================================
+        // LIGHTING SETUP
+        // ============================================
+        
+        function setupLighting() {
+            // Ambient light
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            
+            // Main directional light (sun)
+            const directionalLight = new THREE.DirectionalLight(0xFFF8DC, 1.0);
+            directionalLight.position.set(10, 15, 8);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.camera.left = -15;
+            directionalLight.shadow.camera.right = 15;
+            directionalLight.shadow.camera.top = 15;
+            directionalLight.shadow.camera.bottom = -15;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+            
+            // Rim light
+            const rimLight = new THREE.DirectionalLight(0xFFE4B5, 0.4);
+            rimLight.position.set(-8, 8, -5);
+            scene.add(rimLight);
+            
+            // Hemisphere light for sky effect
+            const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x90EE90, 0.4);
+            scene.add(hemisphereLight);
+        }
+        
+        // ============================================
+        // DOG CREATION
+        // ============================================
+        
+        function createDog() {
+            const dogGroup = new THREE.Group();
+            
+            const dogMaterial = new THREE.MeshPhongMaterial({
+                color: config.dogColor,
+                shininess: 20,
+                flatShading: false
+            });
+            
+            const spotMaterial = new THREE.MeshPhongMaterial({
+                color: config.spotColor,
+                shininess: 20,
+                flatShading: false
+            });
+            
+            // Body
+            const bodyGeometry = new THREE.CylinderGeometry(0.6, 0.7, 1.8, 16);
+            const body = new THREE.Mesh(bodyGeometry, dogMaterial);
+            body.rotation.z = Math.PI / 2;
+            body.position.y = 1.2;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            dogGroup.add(body);
+            
+            // Chest
+            const chestGeometry = new THREE.SphereGeometry(0.65, 16, 16);
+            const chest = new THREE.Mesh(chestGeometry, dogMaterial);
+            chest.position.set(0.9, 1.2, 0);
+            chest.scale.set(1, 0.9, 0.9);
+            chest.castShadow = true;
+            dogGroup.add(chest);
+            
+            // Head
+            const headGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const head = new THREE.Mesh(headGeometry, dogMaterial);
+            head.position.set(1.7, 1.5, 0);
+            head.scale.set(1.1, 0.9, 0.8);
+            head.castShadow = true;
+            dogGroup.add(head);
+            dogGroup.userData.head = head;
+            
+            // Snout
+            const snoutGeometry = new THREE.CylinderGeometry(0.25, 0.3, 0.6, 12);
+            const snout = new THREE.Mesh(snoutGeometry, dogMaterial);
+            snout.rotation.z = Math.PI / 2;
+            snout.position.set(2.1, 1.35, 0);
+            snout.castShadow = true;
+            dogGroup.add(snout);
+            
+            // Nose
+            const noseGeometry = new THREE.SphereGeometry(0.15, 12, 12);
+            const noseMaterial = new THREE.MeshPhongMaterial({
+                color: config.noseColor,
+                shininess: 80
+            });
+            const nose = new THREE.Mesh(noseGeometry, noseMaterial);
+            nose.position.set(2.4, 1.35, 0);
+            nose.scale.set(1, 0.8, 1);
+            nose.castShadow = true;
+            dogGroup.add(nose);
+            
+            // Eyes
+            const eyeGeometry = new THREE.SphereGeometry(0.12, 12, 12);
+            const eyeMaterial = new THREE.MeshPhongMaterial({
+                color: config.eyeColor,
+                shininess: 100
+            });
+            
+            const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            leftEye.position.set(1.9, 1.7, 0.25);
+            dogGroup.add(leftEye);
+            
+            const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            rightEye.position.set(1.9, 1.7, -0.25);
+            dogGroup.add(rightEye);
+            
+            // Ears
+            const earGeometry = new THREE.ConeGeometry(0.25, 0.6, 12);
+            const leftEar = new THREE.Mesh(earGeometry, spotMaterial);
+            leftEar.rotation.z = -Math.PI / 6;
+            leftEar.rotation.x = Math.PI / 8;
+            leftEar.position.set(1.5, 1.9, 0.4);
+            leftEar.castShadow = true;
+            dogGroup.add(leftEar);
+            dogGroup.userData.leftEar = leftEar;
+            
+            const rightEar = new THREE.Mesh(earGeometry, spotMaterial);
+            rightEar.rotation.z = -Math.PI / 6;
+            rightEar.rotation.x = -Math.PI / 8;
+            rightEar.position.set(1.5, 1.9, -0.4);
+            rightEar.castShadow = true;
+            dogGroup.add(rightEar);
+            dogGroup.userData.rightEar = rightEar;
+            
+            // Legs
+            const legGeometry = new THREE.CylinderGeometry(0.15, 0.12, 1.0, 12);
+            
+            const frontLeftLeg = new THREE.Mesh(legGeometry, dogMaterial);
+            frontLeftLeg.position.set(0.6, 0.5, 0.4);
+            frontLeftLeg.castShadow = true;
+            frontLeftLeg.name = 'frontLeftLeg';
+            dogGroup.add(frontLeftLeg);
+            
+            const frontRightLeg = new THREE.Mesh(legGeometry, dogMaterial);
+            frontRightLeg.position.set(0.6, 0.5, -0.4);
+            frontRightLeg.castShadow = true;
+            frontRightLeg.name = 'frontRightLeg';
+            dogGroup.add(frontRightLeg);
+            
+            const backLeftLeg = new THREE.Mesh(legGeometry, dogMaterial);
+            backLeftLeg.position.set(-0.6, 0.5, 0.4);
+            backLeftLeg.castShadow = true;
+            backLeftLeg.name = 'backLeftLeg';
+            dogGroup.add(backLeftLeg);
+            
+            const backRightLeg = new THREE.Mesh(legGeometry, dogMaterial);
+            backRightLeg.position.set(-0.6, 0.5, -0.4);
+            backRightLeg.castShadow = true;
+            backRightLeg.name = 'backRightLeg';
+            dogGroup.add(backRightLeg);
+            
+            // Paws
+            const pawGeometry = new THREE.SphereGeometry(0.15, 12, 12);
+            const pawMaterial = new THREE.MeshPhongMaterial({
+                color: config.spotColor,
+                shininess: 10
+            });
+            
+            const paws = [
+                { x: 0.6, z: 0.4 },
+                { x: 0.6, z: -0.4 },
+                { x: -0.6, z: 0.4 },
+                { x: -0.6, z: -0.4 }
+            ];
+            
+            paws.forEach(pos => {
+                const paw = new THREE.Mesh(pawGeometry, pawMaterial);
+                paw.position.set(pos.x, 0.08, pos.z);
+                paw.scale.set(1, 0.6, 1);
+                paw.castShadow = true;
+                dogGroup.add(paw);
+            });
+            
+            // Tail
+            const tailSegments = [];
+            
+            for (let i = 0; i < 5; i++) {
+                const segmentGeometry = new THREE.CylinderGeometry(
+                    0.12 - i * 0.02,
+                    0.14 - i * 0.02,
+                    0.3,
+                    12
+                );
+                const segment = new THREE.Mesh(segmentGeometry, dogMaterial);
+                segment.castShadow = true;
+                
+                if (i === 0) {
+                    segment.position.set(-1.0, 1.4, 0);
+                    segment.rotation.z = Math.PI / 4;
+                    dogGroup.add(segment);
+                } else {
+                    segment.position.y = 0.28;
+                    segment.rotation.z = Math.PI / 12;
+                    tailSegments[i - 1].add(segment);
+                }
+                
+                tailSegments.push(segment);
+            }
+            
+            dogGroup.userData.tail = tailSegments;
+            
+            // Spot
+            const spotGeometry = new THREE.SphereGeometry(0.4, 16, 16);
+            const spot = new THREE.Mesh(spotGeometry, spotMaterial);
+            spot.position.set(-0.3, 1.6, 0);
+            spot.scale.set(1, 0.3, 1);
+            dogGroup.add(spot);
+            
+            return dogGroup;
+        }
+        
+        // ============================================
+        // ENHANCED ENVIRONMENT
+        // ============================================
+        
+        function createGround() {
+            // Main ground
+            const groundGeometry = new THREE.CircleGeometry(25, 64);
+            const groundMaterial = new THREE.MeshPhongMaterial({
+                color: 0x90EE90,
+                shininess: 5
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = 0;
+            ground.receiveShadow = true;
+            scene.add(ground);
+            
+            // Grass patches with varied colors
+            const grassColors = [0x7CFC00, 0x32CD32, 0x98FB98, 0x00FF00];
+            
+            for (let i = 0; i < 50; i++) {
+                const grassPatchGeometry = new THREE.CircleGeometry(Math.random() * 0.8 + 0.3, 8);
+                const grassPatchMaterial = new THREE.MeshPhongMaterial({
+                    color: grassColors[Math.floor(Math.random() * grassColors.length)],
+                    shininess: 0
+                });
+                const grassPatch = new THREE.Mesh(grassPatchGeometry, grassPatchMaterial);
+                grassPatch.rotation.x = -Math.PI / 2;
+                grassPatch.position.set(
+                    Math.random() * 40 - 20,
+                    0.01,
+                    Math.random() * 40 - 20
+                );
+                scene.add(grassPatch);
+            }
+            
+            // Dirt path
+            const pathGeometry = new THREE.PlaneGeometry(2, 30);
+            const pathMaterial = new THREE.MeshPhongMaterial({
+                color: 0xD2691E,
+                shininess: 0
+            });
+            const path = new THREE.Mesh(pathGeometry, pathMaterial);
+            path.rotation.x = -Math.PI / 2;
+            path.position.set(5, 0.02, 0);
+            path.receiveShadow = true;
+            scene.add(path);
+        }
+        
+        function createFlowers() {
+            const flowerPositions = [
+                { x: -3, z: 3 }, { x: -4, z: 2 }, { x: -2, z: 4 },
+                { x: 3, z: -3 }, { x: 4, z: -2 }, { x: 2, z: -4 },
+                { x: -5, z: -3 }, { x: 6, z: 3 }, { x: -6, z: 4 },
+                { x: 7, z: -4 }, { x: -7, z: 5 }, { x: 8, z: 2 }
+            ];
+            
+            const flowerColors = [0xFF69B4, 0xFF1493, 0xFFFF00, 0xFFA500, 0xFF0000, 0xEE82EE];
+            
+            flowerPositions.forEach(pos => {
+                const flowerGroup = new THREE.Group();
+                
+                // Stem
+                const stemGeometry = new THREE.CylinderGeometry(0.02, 0.03, 0.5, 8);
+                const stemMaterial = new THREE.MeshPhongMaterial({ color: 0x228B22 });
+                const stem = new THREE.Mesh(stemGeometry, stemMaterial);
+                stem.position.y = 0.25;
+                flowerGroup.add(stem);
+                
+                // Petals
+                const petalColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
+                const petalMaterial = new THREE.MeshPhongMaterial({ color: petalColor, shininess: 30 });
+                
+                for (let i = 0; i < 6; i++) {
+                    const petalGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+                    const petal = new THREE.Mesh(petalGeometry, petalMaterial);
+                    const angle = (i / 6) * Math.PI * 2;
+                    petal.position.set(
+                        Math.cos(angle) * 0.12,
+                        0.5,
+                        Math.sin(angle) * 0.12
+                    );
+                    petal.scale.set(1, 0.5, 0.8);
+                    petal.castShadow = true;
+                    flowerGroup.add(petal);
+                }
+                
+                // Center
+                const centerGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+                const centerMaterial = new THREE.MeshPhongMaterial({ color: 0xFFFF00, shininess: 50 });
+                const center = new THREE.Mesh(centerGeometry, centerMaterial);
+                center.position.y = 0.5;
+                center.castShadow = true;
+                flowerGroup.add(center);
+                
+                flowerGroup.position.set(pos.x, 0, pos.z);
+                scene.add(flowerGroup);
+                flowers.push(flowerGroup);
+            });
+        }
+        
+        function createTrees() {
+            const treePositions = [
+                { x: -10, z: -8 }, { x: 10, z: -10 }, { x: -12, z: 10 }, { x: 12, z: 8 }
+            ];
+            
+            treePositions.forEach(pos => {
+                const treeGroup = new THREE.Group();
+                
+                // Trunk
+                const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.4, 3, 12);
+                const trunkMaterial = new THREE.MeshPhongMaterial({ color: 0x8B4513 });
+                const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+                trunk.position.y = 1.5;
+                trunk.castShadow = true;
+                treeGroup.add(trunk);
+                
+                // Foliage layers
+                for (let i = 0; i < 3; i++) {
+                    const foliageGeometry = new THREE.SphereGeometry(1.2 - i * 0.2, 12, 12);
+                    const foliageMaterial = new THREE.MeshPhongMaterial({ 
+                        color: i === 0 ? 0x228B22 : (i === 1 ? 0x32CD32 : 0x90EE90)
+                    });
+                    const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
+                    foliage.position.y = 3.2 + i * 0.6;
+                    foliage.castShadow = true;
+                    foliage.receiveShadow = true;
+                    treeGroup.add(foliage);
+                }
+                
+                treeGroup.position.set(pos.x, 0, pos.z);
+                scene.add(treeGroup);
+                trees.push(treeGroup);
+            });
+        }
+        
+        function createButterflies() {
+            for (let i = 0; i < 5; i++) {
+                const butterflyGroup = new THREE.Group();
+                
+                // Body
+                const bodyGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.2, 8);
+                const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x000000 });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                butterflyGroup.add(body);
+                
+                // Wings
+                const wingColors = [0xFF69B4, 0xFFFF00, 0xFF8C00, 0x9370DB, 0x00CED1];
+                const wingMaterial = new THREE.MeshPhongMaterial({ 
+                    color: wingColors[i],
+                    side: THREE.DoubleSide,
+                    shininess: 50
+                });
+                
+                const leftWingGeometry = new THREE.CircleGeometry(0.15, 8);
+                const leftWing = new THREE.Mesh(leftWingGeometry, wingMaterial);
+                leftWing.rotation.y = Math.PI / 2;
+                leftWing.position.x = -0.1;
+                butterflyGroup.add(leftWing);
+                butterflyGroup.userData.leftWing = leftWing;
+                
+                const rightWing = new THREE.Mesh(leftWingGeometry, wingMaterial);
+                rightWing.rotation.y = Math.PI / 2;
+                rightWing.position.x = 0.1;
+                butterflyGroup.add(rightWing);
+                butterflyGroup.userData.rightWing = rightWing;
+                
+                // Random position
+                butterflyGroup.position.set(
+                    Math.random() * 16 - 8,
+                    Math.random() * 3 + 2,
+                    Math.random() * 16 - 8
+                );
+                
+                butterflyGroup.userData.speed = Math.random() * 0.5 + 0.3;
+                butterflyGroup.userData.offset = Math.random() * Math.PI * 2;
+                
+                scene.add(butterflyGroup);
+                butterflies.push(butterflyGroup);
+            }
+        }
+        
+        function createParticles() {
+            // Floating particles (dust/pollen)
+            const particleGeometry = new THREE.SphereGeometry(0.02, 4, 4);
+            const particleMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xFFFFFF,
+                transparent: true,
+                opacity: 0.6
+            });
+            
+            for (let i = 0; i < 30; i++) {
+                const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+                particle.position.set(
+                    Math.random() * 20 - 10,
+                    Math.random() * 5,
+                    Math.random() * 20 - 10
+                );
+                particle.userData.velocity = {
+                    x: (Math.random() - 0.5) * 0.01,
+                    y: Math.random() * 0.02 + 0.01,
+                    z: (Math.random() - 0.5) * 0.01
+                };
+                scene.add(particle);
+                particles.push(particle);
+            }
+        }
+        
+        function createClouds() {
+            for (let i = 0; i < 6; i++) {
+                const cloudGroup = new THREE.Group();
+                
+                // Multiple spheres to form cloud
+                for (let j = 0; j < 5; j++) {
+                    const cloudGeometry = new THREE.SphereGeometry(
+                        Math.random() * 1 + 0.8,
+                        8,
+                        8
+                    );
+                    const cloudMaterial = new THREE.MeshPhongMaterial({
+                        color: 0xFFFFFF,
+                        transparent: true,
+                        opacity: 0.7,
+                        shininess: 10
+                    });
+                    const cloudPart = new THREE.Mesh(cloudGeometry, cloudMaterial);
+                    cloudPart.position.set(
+                        (Math.random() - 0.5) * 2,
+                        (Math.random() - 0.5) * 0.5,
+                        (Math.random() - 0.5) * 1
+                    );
+                    cloudGroup.add(cloudPart);
+                }
+                
+                cloudGroup.position.set(
+                    Math.random() * 40 - 20,
+                    Math.random() * 5 + 10,
+                    Math.random() * 40 - 20
+                );
+                
+                cloudGroup.userData.speed = Math.random() * 0.005 + 0.002;
+                scene.add(cloudGroup);
+            }
+        }
+        
+        function createSun() {
+            const sunGeometry = new THREE.SphereGeometry(2, 32, 32);
+            const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xFDB813 });
+            const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            sun.position.set(15, 20, 15);
+            scene.add(sun);
+            
+            // Sun glow
+            const glowGeometry = new THREE.SphereGeometry(2.5, 32, 32);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: 0xFDB813,
+                transparent: true,
+                opacity: 0.3
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            glow.position.copy(sun.position);
+            scene.add(glow);
+        }
+        
+        function createBirds() {
+            for (let i = 0; i < 3; i++) {
+                const birdGroup = new THREE.Group();
+                
+                // Body
+                const bodyGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+                const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x000000 });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.scale.set(1, 1, 1.5);
+                birdGroup.add(body);
+                
+                // Wings
+                const wingGeometry = new THREE.BoxGeometry(0.3, 0.02, 0.15);
+                const wingMaterial = new THREE.MeshPhongMaterial({ color: 0x000000 });
+                
+                const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
+                leftWing.position.x = -0.15;
+                birdGroup.add(leftWing);
+                birdGroup.userData.leftWing = leftWing;
+                
+                const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
+                rightWing.position.x = 0.15;
+                birdGroup.add(rightWing);
+                birdGroup.userData.rightWing = rightWing;
+                
+                birdGroup.position.set(
+                    Math.random() * 30 - 15,
+                    Math.random() * 5 + 8,
+                    Math.random() * 30 - 15
+                );
+                
+                birdGroup.userData.speed = Math.random() * 0.03 + 0.02;
+                birdGroup.userData.angle = Math.random() * Math.PI * 2;
+                
+                scene.add(birdGroup);
+            }
+        }
+        
+        // ============================================
+        // ANIMATION LOOP
+        // ============================================
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const elapsedTime = clock.getElapsedTime();
+            
+            if (dog) {
+                // Update action progress
+                actionProgress += 0.016;
+                
+                // Apply dog action animations
+                applyDogAction(elapsedTime);
+                
+                // Dog breathing (subtle for all actions except play dead)
+                if (dogAction !== 'playDead') {
+                    const breathScale = 1 + Math.sin(elapsedTime * 2) * 0.02;
+                    dog.scale.y = breathScale;
+                }
+                
+                // Tail wagging (more intense when happy/playing)
+                if (dog.userData.tail && dogAction !== 'playDead') {
+                    const wagIntensity = dogAction === 'idle' || dogAction === 'sit' ? 0.3 : 0.5;
+                    const wagSpeed = dogAction === 'run' ? 8 : 4;
+                    dog.userData.tail.forEach((segment, index) => {
+                        const wag = Math.sin(elapsedTime * wagSpeed + index * 0.5) * wagIntensity;
+                        segment.rotation.y = wag;
+                    });
+                }
+                
+                // Ear movement
+                if (dog.userData.leftEar && dog.userData.rightEar && dogAction !== 'playDead') {
+                    const earFlutter = Math.sin(elapsedTime * 3) * 0.05;
+                    dog.userData.leftEar.rotation.x = Math.PI / 8 + earFlutter;
+                    dog.userData.rightEar.rotation.x = -Math.PI / 8 - earFlutter;
+                }
+            }
+            
+            // Camera control
+            if (autoRotate) {
+                // Auto-rotate camera around dog
+                const cameraSpeed = 0.2;
+                cameraRotation.y = elapsedTime * cameraSpeed;
+                updateCameraPosition();
+            }
+            
+            // Animate butterflies
+            butterflies.forEach((butterfly, index) => {
+                const speed = butterfly.userData.speed;
+                const offset = butterfly.userData.offset;
+                
+                butterfly.position.x += Math.sin(elapsedTime * speed + offset) * 0.02;
+                butterfly.position.y += Math.cos(elapsedTime * speed * 2 + offset) * 0.01;
+                butterfly.position.z += Math.cos(elapsedTime * speed + offset) * 0.02;
+                
+                // Wing flapping
+                if (butterfly.userData.leftWing && butterfly.userData.rightWing) {
+                    const flap = Math.sin(elapsedTime * 10 + offset) * 0.5;
+                    butterfly.userData.leftWing.rotation.z = flap;
+                    butterfly.userData.rightWing.rotation.z = -flap;
+                }
+                
+                // Keep butterflies in bounds
+                if (butterfly.position.x > 10) butterfly.position.x = -10;
+                if (butterfly.position.x < -10) butterfly.position.x = 10;
+                if (butterfly.position.z > 10) butterfly.position.z = -10;
+                if (butterfly.position.z < -10) butterfly.position.z = 10;
+                if (butterfly.position.y > 5) butterfly.position.y = 2;
+                if (butterfly.position.y < 2) butterfly.position.y = 5;
+            });
+            
+            // Animate particles
+            particles.forEach(particle => {
+                particle.position.x += particle.userData.velocity.x;
+                particle.position.y += particle.userData.velocity.y;
+                particle.position.z += particle.userData.velocity.z;
+                
+                // Reset particles that go too high
+                if (particle.position.y > 6) {
+                    particle.position.y = 0;
+                    particle.position.x = Math.random() * 20 - 10;
+                    particle.position.z = Math.random() * 20 - 10;
+                }
+                
+                // Floating motion
+                particle.rotation.x += 0.01;
+                particle.rotation.y += 0.01;
+            });
+            
+            // Animate flowers (gentle sway)
+            flowers.forEach((flower, index) => {
+                flower.rotation.z = Math.sin(elapsedTime + index) * 0.05;
+            });
+            
+            // Animate trees (gentle sway)
+            trees.forEach((tree, index) => {
+                tree.rotation.z = Math.sin(elapsedTime * 0.5 + index) * 0.02;
+            });
+            
+            // Animate birds
+            scene.traverse(object => {
+                if (object.userData.leftWing && object.userData.rightWing && object.userData.angle !== undefined) {
+                    const speed = object.userData.speed;
+                    const angle = object.userData.angle;
+                    
+                    object.userData.angle += speed;
+                    object.position.x = Math.sin(object.userData.angle) * 12;
+                    object.position.z = Math.cos(object.userData.angle) * 12;
+                    object.position.y = 10 + Math.sin(elapsedTime * 2) * 0.5;
+                    
+                    // Wing flapping
+                    const flap = Math.sin(elapsedTime * 8) * 0.5;
+                    object.userData.leftWing.rotation.y = flap;
+                    object.userData.rightWing.rotation.y = -flap;
+                    
+                    // Face direction of movement
+                    object.rotation.y = object.userData.angle + Math.PI / 2;
+                }
+            });
+            
+            // Animate clouds
+            scene.traverse(object => {
+                if (object.userData.speed && object.children.length > 0 && object.children[0].material.opacity === 0.7) {
+                    object.position.x += object.userData.speed;
+                    
+                    if (object.position.x > 25) {
+                        object.position.x = -25;
+                    }
+                }
+            });
+            
+            renderer.render(scene, camera);
+        }
+        
+        // ============================================
+        // CAMERA CONTROL FUNCTIONS
+        // ============================================
+        
+        function applyDogAction(time) {
+            if (!dog) return;
+            
+            const frontLeftLeg = dog.getObjectByName('frontLeftLeg');
+            const frontRightLeg = dog.getObjectByName('frontRightLeg');
+            const backLeftLeg = dog.getObjectByName('backLeftLeg');
+            const backRightLeg = dog.getObjectByName('backRightLeg');
+            
+            switch(dogAction) {
+                case 'idle':
+                    // Reset to standing position
+                    if (dog.userData.head) {
+                        dog.userData.head.position.y = 1.5 + Math.sin(time * 2) * 0.03;
+                        dog.userData.head.rotation.y = Math.sin(time * 1.5) * 0.1;
+                    }
+                    dog.position.y = 0;
+                    dog.rotation.x = 0;
+                    resetLegs();
+                    break;
+                    
+                case 'sit':
+                    // Sitting position
+                    dog.position.y = -0.3;
+                    dog.rotation.x = -0.2;
+                    if (backLeftLeg && backRightLeg) {
+                        backLeftLeg.position.y = 0.3;
+                        backRightLeg.position.y = 0.3;
+                        backLeftLeg.rotation.x = 1.2;
+                        backRightLeg.rotation.x = 1.2;
+                    }
+                    if (dog.userData.head) {
+                        dog.userData.head.position.y = 1.5 + Math.sin(time * 1.5) * 0.05;
+                    }
+                    break;
+                    
+                case 'walk':
+                    // Walking animation
+                    const walkSpeed = 3;
+                    if (frontLeftLeg) frontLeftLeg.rotation.x = Math.sin(time * walkSpeed) * 0.5;
+                    if (frontRightLeg) frontRightLeg.rotation.x = Math.sin(time * walkSpeed + Math.PI) * 0.5;
+                    if (backLeftLeg) backLeftLeg.rotation.x = Math.sin(time * walkSpeed + Math.PI) * 0.5;
+                    if (backRightLeg) backRightLeg.rotation.x = Math.sin(time * walkSpeed) * 0.5;
+                    
+                    // Move forward (x-axis since dog body is rotated)
+                    dogPosition.x += 0.02;
+                    dog.position.x = dogPosition.x;
+                    dog.position.y = Math.abs(Math.sin(time * walkSpeed)) * 0.05;
+                    
+                    if (dog.userData.head) {
+                        dog.userData.head.position.y = 1.5 + Math.sin(time * walkSpeed) * 0.08;
+                    }
+                    break;
+                    
+                case 'run':
+                    // Running animation
+                    const runSpeed = 6;
+                    if (frontLeftLeg) frontLeftLeg.rotation.x = Math.sin(time * runSpeed) * 0.8;
+                    if (frontRightLeg) frontRightLeg.rotation.x = Math.sin(time * runSpeed + Math.PI) * 0.8;
+                    if (backLeftLeg) backLeftLeg.rotation.x = Math.sin(time * runSpeed + Math.PI) * 0.8;
+                    if (backRightLeg) backRightLeg.rotation.x = Math.sin(time * runSpeed) * 0.8;
+                    
+                    // Move forward faster (x-axis since dog body is rotated)
+                    dogPosition.x += 0.05;
+                    dog.position.x = dogPosition.x;
+                    dog.position.y = Math.abs(Math.sin(time * runSpeed)) * 0.15;
+                    dog.rotation.z = -0.1; // Lean forward slightly in body orientation
+                    
+                    if (dog.userData.head) {
+                        dog.userData.head.position.y = 1.5 + Math.sin(time * runSpeed) * 0.1;
+                    }
+                    break;
+                    
+                case 'jump':
+                    // Jumping animation
+                    const jumpTime = actionProgress % 2;
+                    if (jumpTime < 1) {
+                        // Going up
+                        dog.position.y = Math.sin(jumpTime * Math.PI) * 2;
+                        dog.rotation.x = -0.3;
+                        if (frontLeftLeg && frontRightLeg) {
+                            frontLeftLeg.rotation.x = -0.5;
+                            frontRightLeg.rotation.x = -0.5;
+                        }
+                        if (backLeftLeg && backRightLeg) {
+                            backLeftLeg.rotation.x = 0.8;
+                            backRightLeg.rotation.x = 0.8;
+                        }
+                    } else {
+                        // Landing
+                        dog.position.y = 0;
+                        dog.rotation.x = 0;
+                        resetLegs();
+                    }
+                    
+                    if (dog.userData.head) {
+                        dog.userData.head.position.y = 1.5;
+                    }
+                    break;
+                    
+                case 'playDead':
+                    // Play dead - lying on side
+                    dog.rotation.z = Math.PI / 2;
+                    dog.position.y = 0.5;
+                    dog.scale.y = 1;
+                    
+                    if (dog.userData.tail) {
+                        dog.userData.tail.forEach(segment => {
+                            segment.rotation.y = 0;
+                        });
+                    }
+                    
+                    if (dog.userData.head) {
+                        dog.userData.head.position.y = 1.5;
+                        dog.userData.head.rotation.y = 0;
+                    }
+                    
+                    resetLegs();
+                    break;
+            }
+        }
+        
+        function resetLegs() {
+            const frontLeftLeg = dog.getObjectByName('frontLeftLeg');
+            const frontRightLeg = dog.getObjectByName('frontRightLeg');
+            const backLeftLeg = dog.getObjectByName('backLeftLeg');
+            const backRightLeg = dog.getObjectByName('backRightLeg');
+            
+            if (frontLeftLeg) {
+                frontLeftLeg.position.y = 0.5;
+                frontLeftLeg.rotation.x = 0;
+            }
+            if (frontRightLeg) {
+                frontRightLeg.position.y = 0.5;
+                frontRightLeg.rotation.x = 0;
+            }
+            if (backLeftLeg) {
+                backLeftLeg.position.y = 0.5;
+                backLeftLeg.rotation.x = 0;
+            }
+            if (backRightLeg) {
+                backRightLeg.position.y = 0.5;
+                backRightLeg.rotation.x = 0;
+            }
+        }
+        
+        function setDogAction(action) {
+            // Remove active class from all buttons
+            document.querySelectorAll('.control-btn').forEach(btn => {
+                if (btn.id !== 'autoRotateBtn') {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            // Add active class to clicked button
+            const buttonMap = {
+                'idle': 'idleBtn',
+                'sit': 'sitBtn',
+                'walk': 'walkBtn',
+                'run': 'runBtn',
+                'jump': 'jumpBtn',
+                'playDead': 'playBtn'
+            };
+            
+            document.getElementById(buttonMap[action]).classList.add('active');
+            
+            // Reset dog rotation and position for certain actions
+            if (action === 'idle' || action === 'sit' || action === 'jump' || action === 'playDead') {
+                dog.rotation.z = 0;
+                dog.rotation.x = 0;
+                dogPosition.set(0, 0, 0);
+                dog.position.x = 0;
+                dog.position.z = 0;
+            }
+            
+            dogAction = action;
+            actionProgress = 0;
+        }
+        
+        // ============================================
+        // CAMERA CONTROL FUNCTIONS
+        // ============================================
+        
+        function updateCameraPosition() {
+            const x = Math.sin(cameraRotation.y) * Math.cos(cameraRotation.x) * cameraDistance;
+            const y = Math.sin(cameraRotation.x) * cameraDistance;
+            const z = Math.cos(cameraRotation.y) * Math.cos(cameraRotation.x) * cameraDistance;
+            
+            camera.position.set(x, y + 3, z).add(panOffset);
+            camera.lookAt(cameraTarget.clone().add(panOffset));
+        }
+        
+        function onMouseDown(event) {
+            if (event.button === 0) { // Left mouse button
+                isDragging = true;
+                autoRotate = false;
+                updateAutoRotateButton();
+            } else if (event.button === 2) { // Right mouse button
+                isPanning = true;
+                autoRotate = false;
+                updateAutoRotateButton();
+            }
+            
+            previousMousePosition = {
+                x: event.clientX,
+                y: event.clientY
+            };
+        }
+        
+        function onMouseMove(event) {
+            if (isDragging) {
+                const deltaX = event.clientX - previousMousePosition.x;
+                const deltaY = event.clientY - previousMousePosition.y;
+                
+                cameraRotation.y += deltaX * 0.01;
+                cameraRotation.x += deltaY * 0.01;
+                
+                // Limit vertical rotation
+                cameraRotation.x = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, cameraRotation.x));
+                
+                updateCameraPosition();
+            } else if (isPanning) {
+                const deltaX = event.clientX - previousMousePosition.x;
+                const deltaY = event.clientY - previousMousePosition.y;
+                
+                // Calculate pan direction based on camera orientation
+                const panSpeed = 0.01;
+                const right = new THREE.Vector3();
+                const up = new THREE.Vector3(0, 1, 0);
+                
+                camera.getWorldDirection(right);
+                right.cross(up).normalize();
+                
+                panOffset.add(right.multiplyScalar(-deltaX * panSpeed));
+                panOffset.y -= deltaY * panSpeed;
+                
+                updateCameraPosition();
+            }
+            
+            previousMousePosition = {
+                x: event.clientX,
+                y: event.clientY
+            };
+        }
+        
+        function onMouseUp(event) {
+            isDragging = false;
+            isPanning = false;
+        }
+        
+        function onMouseWheel(event) {
+            event.preventDefault();
+            
+            autoRotate = false;
+            updateAutoRotateButton();
+            
+            const zoomSpeed = 0.1;
+            cameraDistance += event.deltaY * 0.01 * zoomSpeed;
+            cameraDistance = Math.max(3, Math.min(20, cameraDistance));
+            
+            updateCameraPosition();
+        }
+        
+        function toggleAutoRotate() {
+            autoRotate = !autoRotate;
+            updateAutoRotateButton();
+        }
+        
+        function updateAutoRotateButton() {
+            const btn = document.getElementById('autoRotateBtn');
+            btn.textContent = autoRotate ? 'Auto-Rotate: ON' : 'Auto-Rotate: OFF';
+            btn.style.background = autoRotate ? '#4CAF50' : '#f44336';
+        }
+        
+        // ============================================
+        // EVENT HANDLERS
+        // ============================================
+        
+        // Initialize controls after DOM is ready
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                if (renderer && renderer.domElement) {
+                    renderer.domElement.addEventListener('mousedown', onMouseDown, false);
+                    renderer.domElement.addEventListener('mousemove', onMouseMove, false);
+                    renderer.domElement.addEventListener('mouseup', onMouseUp, false);
+                    renderer.domElement.addEventListener('wheel', onMouseWheel, false);
+                    renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault(), false);
+                }
+                
+                const btn = document.getElementById('autoRotateBtn');
+                if (btn) {
+                    btn.addEventListener('click', toggleAutoRotate, false);
+                }
+                
+                // Add dog action button listeners
+                document.getElementById('idleBtn').addEventListener('click', () => setDogAction('idle'));
+                document.getElementById('sitBtn').addEventListener('click', () => setDogAction('sit'));
+                document.getElementById('walkBtn').addEventListener('click', () => setDogAction('walk'));
+                document.getElementById('runBtn').addEventListener('click', () => setDogAction('run'));
+                document.getElementById('jumpBtn').addEventListener('click', () => setDogAction('jump'));
+                document.getElementById('playBtn').addEventListener('click', () => setDogAction('playDead'));
+                
+                updateCameraPosition();
+            }, 100);
+        });
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // ============================================
+        // CLEANUP
+        // ============================================
+        
+        window.addEventListener('beforeunload', () => {
+            scene.traverse(object => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(material => material.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            });
+            renderer.dispose();
+        });
+    </script>
+</body>
+</html>
